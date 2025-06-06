@@ -1,47 +1,33 @@
 package server;
 
-import shared.KeyExchange;
-import javax.crypto.*;
-import javax.crypto.spec.DESKeySpec;
+import shared.CryptoUtils;
 import java.io.*;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.spec.InvalidKeySpecException;
+import java.util.Arrays;
 
 public class FileDecryptor {
-    private static final int BUFFER_SIZE = 8200; // 加密后数据可能稍大
-
     public static void decryptFile(File inputFile, File outputFile, byte[] key) 
-            throws IOException, NoSuchPaddingException, NoSuchAlgorithmException, 
-                   InvalidKeyException, BadPaddingException, IllegalBlockSizeException, 
-                   InvalidKeySpecException {
+            throws Exception {
         
-        if (!KeyExchange.validateDESKey(key)) {
-            throw new InvalidKeyException("Invalid DES key");
-        }
-
-        try (InputStream in = new BufferedInputStream(new FileInputStream(inputFile));
-             OutputStream out = new BufferedOutputStream(new FileOutputStream(outputFile))) {
+        try (InputStream in = new FileInputStream(inputFile);
+             OutputStream out = new FileOutputStream(outputFile)) {
             
-            Cipher cipher = Cipher.getInstance("DES/ECB/PKCS5Padding");
-            SecretKey secretKey = SecretKeyFactory.getInstance("DES").generateSecret(new DESKeySpec(key));
-            cipher.init(Cipher.DECRYPT_MODE, secretKey);
+            byte[] sizeBuffer = new byte[4];
             
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int bytesRead;
-            
-            // 分块解密
-            while ((bytesRead = in.read(buffer)) != -1) {
-                byte[] decryptedBlock = cipher.update(buffer, 0, bytesRead);
-                if (decryptedBlock != null) {
-                    out.write(decryptedBlock);
-                }
-            }
-            
-            byte[] finalBlock = cipher.doFinal();
-            if (finalBlock != null) {
-                out.write(finalBlock);
+            while (in.read(sizeBuffer) != -1) {
+                int chunkSize = byteArrayToInt(sizeBuffer);
+                byte[] encrypted = new byte[chunkSize];
+                in.read(encrypted);
+                
+                byte[] decrypted = CryptoUtils.decrypt(encrypted, key);
+                out.write(decrypted);
             }
         }
+    }
+    
+    private static int byteArrayToInt(byte[] bytes) {
+        return ((bytes[0] & 0xFF) << 24) |
+               ((bytes[1] & 0xFF) << 16) |
+               ((bytes[2] & 0xFF) << 8) |
+               (bytes[3] & 0xFF);
     }
 }
